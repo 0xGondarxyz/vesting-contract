@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
@@ -59,16 +58,6 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
         _unpause();
     }
 
-    // modifier whenNotPaused() {
-    //     require(!paused(), "Pausable: paused");
-    //     _;
-    // }
-
-    // modifier vestingNotRevokedForBeneficiary(address beneficiary) {
-    //     require(!vestingSchedules[beneficiary].revoked, "Vesting already revoked");
-    //     _;
-    // }
-
     function changeOwner(address newOwner) public onlyOwner {
         transferOwnership(newOwner);
     }
@@ -85,8 +74,7 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 vestingDuration
     ) public whenNotPaused nonReentrant onlyOwner {
         require(totalAmount > 0, "Total amount must be greater than 0");
-        // require(startTime > block.timestamp, "Start time must be in the future");
-        // require(cliffDuration > 0, "Cliff duration must be greater than 0");
+
         require(vestingDuration > 0, "Vesting duration must be greater than 0");
         require(beneficiary != address(0), "Beneficiary address cannot be zero");
 
@@ -180,6 +168,7 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
     }
 
     // Helper function
+    //note loops are never a good idea
     function getTotalReleased() public view returns (uint256) {
         uint256 total = 0;
         for (uint256 i = 0; i < beneficiaries.length; i++) {
