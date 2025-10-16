@@ -6,11 +6,13 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
-    address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; //6 decimals
+    IERC20 public USDCAddress;
 
     struct VestingSchedule {
         uint256 totalAmount; // Total USDC allocated to this employee
@@ -43,8 +45,8 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
     event VestingScheduleRevoked(address indexed beneficiary);
     event TokensReleased(address indexed beneficiary, uint256 amount);
 
-    constructor() Ownable(msg.sender) {
-        // That's it! Keep it minimal
+    constructor(address usdc) Ownable(msg.sender) {
+        USDCAddress = IERC20(usdc);
     }
 
     //pause functions
@@ -56,17 +58,17 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
         _unpause();
     }
 
-    modifier whenNotPaused() {
-        require(!paused(), "Pausable: paused");
-        _;
-    }
+    // modifier whenNotPaused() {
+    //     require(!paused(), "Pausable: paused");
+    //     _;
+    // }
 
     function changeOwner(address newOwner) public onlyOwner {
         transferOwnership(newOwner);
     }
 
     function fundContract(uint256 amount) public whenNotPaused nonReentrant onlyOwner {
-        IERC20(USDC).safeTransferFrom(msg.sender, address(this), amount);
+        USDCAddress.safeTransferFrom(msg.sender, address(this), amount);
     }
 
     function createVestingSchedule(
@@ -97,4 +99,7 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
 
         emit VestingScheduleCreated(beneficiary, totalAmount, startTime, cliffDuration, vestingDuration);
     }
+
+    receive() external payable {}
+    fallback() external payable {}
 }

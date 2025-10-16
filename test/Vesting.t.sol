@@ -5,8 +5,18 @@ import {Test, console} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {VestingContract} from "../src/VestingContract.sol";
 
+contract MockUSDC is ERC20 {
+    constructor() ERC20("Mock USDC", "USDC") {
+        _mint(msg.sender, 1_000_000_000 * 1e6);
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+}
+
 contract VestingTest is Test {
-    address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; //6 decimals
+    address public USDC;
 
     VestingContract public vestingContract;
 
@@ -15,11 +25,12 @@ contract VestingTest is Test {
     address public user3 = makeAddr("user3");
 
     function setUp() public {
-        usdc = IERC20(USDC);
-        vestingContract = new VestingContract();
+        // usdc = IERC20(USDC);
+        vestingContract = new VestingContract(address(new MockUSDC()));
+        USDC = address(new MockUSDC());
 
-        //deal 1_000_000 usdc to this contract/ owner
-        deal(USDC, address(this), 1_000_000 * 1e6);
+        //deal 1 million usdc token to this contract
+        deal(USDC, address(this), 1_000_000_000 * 1e6);
     }
 
     function testCreateVestingSchedule() public {
