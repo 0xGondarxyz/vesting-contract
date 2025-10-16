@@ -31,6 +31,7 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
 
     // Track which addresses have active vesting schedules
     mapping(address => bool) public hasVesting;
+    mapping(address => uint256) public revokeTimestamp;
 
     // Optional: array to iterate through all beneficiaries if needed
     address[] public beneficiaries;
@@ -63,6 +64,11 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
     //     _;
     // }
 
+    // modifier vestingNotRevokedForBeneficiary(address beneficiary) {
+    //     require(!vestingSchedules[beneficiary].revoked, "Vesting already revoked");
+    //     _;
+    // }
+
     function changeOwner(address newOwner) public onlyOwner {
         transferOwnership(newOwner);
     }
@@ -80,7 +86,7 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
     ) public whenNotPaused nonReentrant onlyOwner {
         require(totalAmount > 0, "Total amount must be greater than 0");
         // require(startTime > block.timestamp, "Start time must be in the future");
-        require(cliffDuration > 0, "Cliff duration must be greater than 0");
+        // require(cliffDuration > 0, "Cliff duration must be greater than 0");
         require(vestingDuration > 0, "Vesting duration must be greater than 0");
         require(beneficiary != address(0), "Beneficiary address cannot be zero");
 
@@ -98,6 +104,88 @@ contract VestingContract is Ownable2Step, ReentrancyGuard, Pausable {
         beneficiaries.push(beneficiary);
 
         emit VestingScheduleCreated(beneficiary, totalAmount, startTime, cliffDuration, vestingDuration);
+    }
+
+    function releasableAmount(address beneficiary) public view returns (uint256) {
+        VestingSchedule memory schedule = vestingSchedules[beneficiary];
+
+        // If no vesting schedule exists, return 0
+        if (!hasVesting[beneficiary]) {
+            return 0;
+        }
+
+        // Calculate total vested amount up to now
+        uint256 vested = vestedAmount(beneficiary);
+
+        // Subtract what's already been released
+        return vested - schedule.released;
+    }
+
+    function vestedAmount(address beneficiary) public view returns (uint256) {
+        VestingSchedule memory schedule = vestingSchedules[beneficiary];
+        uint256 timeElapsed;
+        uint256 vestedAmount;
+
+        // If no schedule, return 0
+        if (!hasVesting[beneficiary]) {
+            return 0;
+        }
+
+        // If before cliff, nothing is vested yet
+        if (block.timestamp < schedule.startTime + schedule.cliffDuration) {
+            return 0;
+        }
+
+        //if revoked
+        if (schedule.revoked) {
+            //get revoke timestamp
+            timeElapsed = revokeTimestamp[beneficiary] - schedule.startTime;
+            vestedAmount = (schedule.totalAmount * timeElapsed) / schedule.vestingDuration;
+            return vestedAmount;
+        }
+
+        // If past the full vesting duration, everything is vested and if not revoked
+        if (block.timestamp >= schedule.startTime + schedule.vestingDuration) {
+            return schedule.totalAmount;
+        }
+
+        // Otherwise, calculate linear vesting
+        timeElapsed = block.timestamp - schedule.startTime;
+        vestedAmount = (schedule.totalAmount * timeElapsed) / schedule.vestingDuration;
+
+        return vestedAmount;
+    }
+
+    function claim() public whenNotPaused nonReentrant {
+        uint256 releasable = releasableAmount(msg.sender);
+        require(releasable > 0, "No releasable amount");
+        vestingSchedules[msg.sender].released += releasable;
+        USDCAddress.safeTransfer(msg.sender, releasable);
+        emit TokensReleased(msg.sender, releasable);
+    }
+
+    function revoke(address beneficiary) public whenNotPaused nonReentrant onlyOwner {
+        require(hasVesting[beneficiary], "No vesting schedule");
+        vestingSchedules[beneficiary].revoked = true;
+        revokeTimestamp[beneficiary] = block.timestamp;
+        emit VestingScheduleRevoked(beneficiary);
+    }
+
+    function withdrawExcessFunds(uint256 amount) public onlyOwner nonReentrant {
+        uint256 contractBalance = USDCAddress.balanceOf(address(this));
+        uint256 availableToWithdraw = contractBalance - (totalAllocated - getTotalReleased());
+
+        require(amount <= availableToWithdraw, "Insufficient excess funds");
+        USDCAddress.safeTransfer(msg.sender, amount);
+    }
+
+    // Helper function
+    function getTotalReleased() public view returns (uint256) {
+        uint256 total = 0;
+        for (uint256 i = 0; i < beneficiaries.length; i++) {
+            total += vestingSchedules[beneficiaries[i]].released;
+        }
+        return total;
     }
 
     receive() external payable {}
